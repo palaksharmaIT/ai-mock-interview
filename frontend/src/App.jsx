@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { checkBackend } from "./api";
+import { generateQuestions } from "./api";
 import {
   SignedIn,
   SignedOut,
@@ -11,7 +11,29 @@ import {
 
 import InterviewSetupModal from "./components/InterviewSetupModal";
 import PermissionStep from "./components/PermissionStep";
+import InterviewRoom from "./components/InterviewRoom";
+import Dashboard from "./components/Dashboard";
 import "./App.css";
+
+// Makes Clerk's forms blend into the panel instead of showing a second card
+const appearance = {
+  variables: {
+    colorPrimary: "#b4452a",
+    colorText: "#1d1b17",
+    colorBackground: "transparent",
+    fontFamily: "'Instrument Sans', system-ui, sans-serif",
+    borderRadius: "3px",
+  },
+  elements: {
+    rootBox: { width: "100%" },
+    cardBox: { width: "100%", boxShadow: "none" },
+    card: { boxShadow: "none", background: "transparent", border: "none", padding: 0 },
+    header: { display: "none" },
+    footerAction: { display: "none" },
+  },
+};
+
+const levelText = (exp) => (exp === "Fresher" ? "Fresher" : `${exp} years`);
 
 function AuthPage() {
   const [mode, setMode] = useState("signin");
@@ -67,8 +89,10 @@ function AuthPage() {
       </section>
 
       <section className="panel">
-        <div className="tabs">
+        <div className="tabs" role="tablist">
           <button
+            role="tab"
+            aria-selected={mode === "signin"}
             className={mode === "signin" ? "on" : ""}
             onClick={() => setMode("signin")}
           >
@@ -76,6 +100,8 @@ function AuthPage() {
           </button>
 
           <button
+            role="tab"
+            aria-selected={mode === "signup"}
             className={mode === "signup" ? "on" : ""}
             onClick={() => setMode("signup")}
           >
@@ -87,13 +113,13 @@ function AuthPage() {
           <>
             <h2>Welcome back.</h2>
             <p className="sub">Continue your interview practice.</p>
-            <SignIn />
+            <SignIn routing="hash" appearance={appearance} />
           </>
         ) : (
           <>
             <h2>Create your account.</h2>
             <p className="sub">Start preparing for your next interview.</p>
-            <SignUp />
+            <SignUp routing="hash" appearance={appearance} />
           </>
         )}
       </section>
@@ -112,9 +138,13 @@ function Home({ onStart }) {
 
       <h1>Ready for your mock interview?</h1>
 
-      <p className="lede">
-        Practice your technical interview with AI.
-      </p>
+      <p className="lede">Practice your technical interview with AI.</p>
+
+      <ul className="facts">
+        <li>10 questions</li>
+        <li>About 30 minutes</li>
+        <li>Camera and mic</li>
+      </ul>
 
       <button className="cta" onClick={onStart}>
         Start Interview
@@ -124,24 +154,62 @@ function Home({ onStart }) {
 }
 
 function Signed() {
-  const [step, setStep] = useState("home");
+  const [step, setStep] = useState("dashboard");
   const [showModal, setShowModal] = useState(false);
   const [setup, setSetup] = useState(null);
   const [stream, setStream] = useState(null);
-  const testBackend = async () => {
-  try {
-    const data = await checkBackend();
-    console.log("Backend response:", data);
-  } catch (error) {
-    console.error("Backend connection failed:", error);
-  }
-};
+  const [questions, setQuestions] = useState([]);
+  const [finalAnswers, setFinalAnswers] = useState([]);
+  const [questionError, setQuestionError] = useState("");
+
+  const stopStream = (s = stream) => s?.getTracks().forEach((t) => t.stop());
+
+  // Called once camera + mic are allowed
+  const startInterview = async (cameraStream) => {
+    setStep("loading");
+    setQuestionError("");
+    try {
+      const data = await generateQuestions(setup.experience, setup.techStack);
+      setQuestions(data.questions);
+      setStream(cameraStream);
+      setStep("interview");
+    } catch (error) {
+      console.error("Question generation failed:", error);
+      stopStream(cameraStream); // don't leave the camera light on
+      setQuestionError("Unable to generate interview questions. Please try again.");
+      setStep("error");
+    }
+  };
 
   const leave = () => {
-    stream?.getTracks().forEach((track) => track.stop());
+    stopStream();
     setStream(null);
+    setQuestions([]);
+    setFinalAnswers([]);
+    setQuestionError("");
     setStep("home");
   };
+
+  const finish = (answers) => {
+    stopStream();
+    setStream(null);
+    setFinalAnswers(answers);
+    console.log("Answers for feedback:", answers); // next step: send to FastAPI
+    setStep("finished");
+  };
+
+  // The interview room is full-screen and has its own header + timer
+  if (step === "interview") {
+    return (
+      <InterviewRoom
+        setup={setup}
+        questions={questions}
+        stream={stream}
+        onFinish={finish}
+        onCancel={leave}
+      />
+    );
+  }
 
   return (
     <div className="home">
@@ -153,41 +221,55 @@ function Signed() {
         <UserButton />
       </header>
 
-    {step === "home" && (
-      <main>
-        <Home onStart={() => setShowModal(true)} />
-
-        <button className="btn-ghost" onClick={testBackend}>
-          Test Backend
-        </button>
-      </main>
-    )}
+      {step === "home" && <Home onStart={() => setShowModal(true)} />}
 
       {step === "permissions" && (
         <PermissionStep
           setup={setup}
           onBack={() => setStep("home")}
-          onGranted={(s) => {
-            setStream(s);
-            setStep("interview");
-          }}
+          onGranted={startInterview}
         />
       )}
 
-      {step === "interview" && (
+      {step === "loading" && (
         <main>
           <p className="eyebrow">
-            {setup?.techStack} · {setup?.experience}
+            {setup?.techStack} · {levelText(setup?.experience)}
           </p>
-
-          <h1>Camera and mic are ready.</h1>
-
+          <h1>Preparing your interview…</h1>
           <p className="lede">
-            Step 3 — the AI interview questions will come here.
+            Generating questions based on your experience and tech stack.
           </p>
+        </main>
+      )}
 
-          <button className="btn-ghost" onClick={leave}>
-            Cancel
+      {step === "error" && (
+        <main>
+          <h1>Something went wrong</h1>
+          <p className="error" role="alert">
+            {questionError}
+          </p>
+          <div className="btn-row">
+            <button className="btn-ghost" onClick={leave}>
+              Cancel
+            </button>
+            <button className="cta" onClick={() => setStep("permissions")}>
+              Try again
+            </button>
+          </div>
+        </main>
+      )}
+
+      {step === "finished" && (
+        <main>
+          <p className="eyebrow">Interview complete</p>
+          <h1>Nice work.</h1>
+          <p className="lede">
+            You answered {finalAnswers.filter((a) => a.answer).length} of{" "}
+            {finalAnswers.length} questions. Your feedback report comes next.
+          </p>
+          <button className="cta" onClick={leave}>
+            Back to home
           </button>
         </main>
       )}

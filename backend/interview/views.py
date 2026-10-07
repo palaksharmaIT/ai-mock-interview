@@ -17,7 +17,7 @@ def test_gemini(request):
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
         response = client.models.generate_content(
-            model="gemini-3.8-flash",
+            model="gemini-3.5-flash-lite",
             contents="Say hello in one short sentence."
         )
 
@@ -27,20 +27,19 @@ def test_gemini(request):
         })
 
     except Exception as e:
+        print("================================")
+        print("GEMINI ERROR:", repr(e))
+        print("================================")
+
         return JsonResponse({
             "status": "error",
             "message": str(e)
         }, status=500)
 
-def generate_questions(request):
-    return JsonResponse({
-        "status": "success",
-        "message": "Question generation endpoint is ready"
-    }) 
-
-
 @csrf_exempt
 def generate_questions(request):
+    print("GENERATE QUESTIONS CALLED")
+
     if request.method != "POST":
         return JsonResponse({
             "status": "error",
@@ -48,10 +47,14 @@ def generate_questions(request):
         }, status=405)
 
     try:
+        print("STEP 1: Reading request")
+
         data = json.loads(request.body)
 
         experience = data.get("experience")
         tech_stack = data.get("techStack")
+
+        
 
         if not experience or not tech_stack:
             return JsonResponse({
@@ -59,22 +62,31 @@ def generate_questions(request):
                 "message": "Experience and tech stack are required"
             }, status=400)
 
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        
+
+        client = genai.Client(
+            api_key=settings.GEMINI_API_KEY
+        )
+
+       
 
         prompt = f"""
 You are a technical interviewer.
 
 Create exactly 10 technical interview questions for a candidate with:
-- Experience: {experience}
-- Tech stack: {tech_stack}
+
+Experience: {experience}
+Technology: {tech_stack}
 
 Requirements:
-- Questions should match the candidate's experience level.
-- Focus mainly on {tech_stack}.
-- Include a mix of conceptual and practical questions.
+- Match the candidate's experience level.
+- Focus primarily on {tech_stack}.
+- Include both conceptual and practical questions.
 - Gradually increase the difficulty.
 - Do not provide answers.
-- Return ONLY valid JSON in this exact format:
+- Return ONLY valid JSON.
+
+Use exactly this format:
 
 {{
     "questions": [
@@ -93,18 +105,25 @@ Requirements:
 """
 
         response = client.models.generate_content(
-            model="gemini-3.8-flash",
+            model="gemini-3.5-flash-lite",
             contents=prompt
         )
 
+       
+
         result = json.loads(response.text)
 
+        
         return JsonResponse({
             "status": "success",
             "questions": result["questions"]
         })
 
     except Exception as e:
+        print("================================")
+        print("GEMINI ERROR:", repr(e))
+        print("================================")
+
         return JsonResponse({
             "status": "error",
             "message": str(e)
