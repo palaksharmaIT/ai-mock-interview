@@ -1,0 +1,12 @@
+:root { color-scheme: light; }
+html, body { margin: 0; padding: 0; }
+#root {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  text-align: left;
+  display: block;
+}
