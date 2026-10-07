@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { generateQuestions } from "./api";
+
 import {
   SignedIn,
   SignedOut,
@@ -13,9 +14,13 @@ import InterviewSetupModal from "./components/InterviewSetupModal";
 import PermissionStep from "./components/PermissionStep";
 import InterviewRoom from "./components/InterviewRoom";
 import Dashboard from "./components/Dashboard";
+
 import "./App.css";
 
-// Makes Clerk's forms blend into the panel instead of showing a second card
+// --------------------------------------------------
+// Clerk appearance
+// --------------------------------------------------
+
 const appearance = {
   variables: {
     colorPrimary: "#b4452a",
@@ -24,23 +29,54 @@ const appearance = {
     fontFamily: "'Instrument Sans', system-ui, sans-serif",
     borderRadius: "3px",
   },
+
   elements: {
-    rootBox: { width: "100%" },
-    cardBox: { width: "100%", boxShadow: "none" },
-    card: { boxShadow: "none", background: "transparent", border: "none", padding: 0 },
-    header: { display: "none" },
-    footerAction: { display: "none" },
+    rootBox: {
+      width: "100%",
+    },
+
+    cardBox: {
+      width: "100%",
+      boxShadow: "none",
+    },
+
+    card: {
+      boxShadow: "none",
+      background: "transparent",
+      border: "none",
+      padding: 0,
+    },
+
+    header: {
+      display: "none",
+    },
+
+    footerAction: {
+      display: "none",
+    },
   },
 };
 
-const levelText = (exp) => (exp === "Fresher" ? "Fresher" : `${exp} years`);
+// --------------------------------------------------
+// Helper
+// --------------------------------------------------
+
+const levelText = (exp) => {
+  return exp === "Fresher" ? "Fresher" : `${exp} years`;
+};
+
+// --------------------------------------------------
+// Authentication Page
+// --------------------------------------------------
 
 function AuthPage() {
   const [mode, setMode] = useState("signin");
 
   return (
     <div className="page">
+
       <section className="story">
+
         <div className="mark">
           Rehearsal<span>.</span>
         </div>
@@ -57,39 +93,57 @@ function AuthPage() {
         </div>
 
         <ol className="steps">
+
           <li>
             <span className="n">01</span>
+
             <div>
               <strong>Set your interview</strong>
-              <p>Choose your experience level and tech stack.</p>
+
+              <p>
+                Choose your experience level and tech stack.
+              </p>
             </div>
           </li>
 
           <li>
             <span className="n">02</span>
+
             <div>
               <strong>Practice naturally</strong>
-              <p>Answer questions using your camera and microphone.</p>
+
+              <p>
+                Answer questions using your camera and microphone.
+              </p>
             </div>
           </li>
 
           <li>
             <span className="n">03</span>
+
             <div>
               <strong>Get feedback</strong>
-              <p>Review your performance and identify areas to improve.</p>
+
+              <p>
+                Review your performance and identify areas to improve.
+              </p>
             </div>
           </li>
+
         </ol>
 
         <blockquote className="sample">
           <span>Interview mindset</span>
+
           “You don't need perfect answers. You need practice.”
         </blockquote>
+
       </section>
 
       <section className="panel">
+
         <div className="tabs" role="tablist">
+
           <button
             role="tab"
             aria-selected={mode === "signin"}
@@ -107,38 +161,66 @@ function AuthPage() {
           >
             Sign up
           </button>
+
         </div>
 
         {mode === "signin" ? (
           <>
             <h2>Welcome back.</h2>
-            <p className="sub">Continue your interview practice.</p>
-            <SignIn routing="hash" appearance={appearance} />
+
+            <p className="sub">
+              Continue your interview practice.
+            </p>
+
+            <SignIn
+              routing="hash"
+              appearance={appearance}
+            />
           </>
         ) : (
           <>
             <h2>Create your account.</h2>
-            <p className="sub">Start preparing for your next interview.</p>
-            <SignUp routing="hash" appearance={appearance} />
+
+            <p className="sub">
+              Start preparing for your next interview.
+            </p>
+
+            <SignUp
+              routing="hash"
+              appearance={appearance}
+            />
           </>
         )}
+
       </section>
+
     </div>
   );
 }
+
+// --------------------------------------------------
+// Old Home Component
+// --------------------------------------------------
 
 function Home({ onStart }) {
   const { user } = useUser();
 
   return (
     <main>
+
       <p className="eyebrow">
-        {user?.firstName ? `Hello, ${user.firstName}` : "Hello"}
+        {user?.firstName
+          ? `Hello, ${user.firstName}`
+          : "Hello"}
       </p>
 
-      <h1>Ready for your mock interview?</h1>
+      <h1>
+        Ready for your mock interview?
+      </h1>
 
-      <p className="lede">Practice your technical interview with AI.</p>
+      <p className="lede">
+        Practice your technical interview with AI.
+      </p>
 
       <ul className="facts">
         <li>10 questions</li>
@@ -146,12 +228,20 @@ function Home({ onStart }) {
         <li>Camera and mic</li>
       </ul>
 
-      <button className="cta" onClick={onStart}>
+      <button
+        className="cta"
+        onClick={onStart}
+      >
         Start Interview
       </button>
+
     </main>
   );
 }
+
+// --------------------------------------------------
+// Signed-in Application
+// --------------------------------------------------
 
 function Signed() {
   const [step, setStep] = useState("dashboard");
@@ -162,43 +252,124 @@ function Signed() {
   const [finalAnswers, setFinalAnswers] = useState([]);
   const [questionError, setQuestionError] = useState("");
 
-  const stopStream = (s = stream) => s?.getTracks().forEach((t) => t.stop());
+  // ------------------------------------------------
+  // Completed interview history
+  // ------------------------------------------------
 
-  // Called once camera + mic are allowed
+  const [completedSessions, setCompletedSessions] = useState(() => {
+    try {
+      const saved = localStorage.getItem("rehearsal_sessions");
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error("Unable to load interview history:", error);
+      return [];
+    }
+  });
+
+  // ------------------------------------------------
+  // Stop camera / microphone
+  // ------------------------------------------------
+
+  const stopStream = (currentStream = stream) => {
+    currentStream?.getTracks().forEach((track) => {
+      track.stop();
+    });
+  };
+
+  // ------------------------------------------------
+  // Generate interview questions
+  // ------------------------------------------------
+
   const startInterview = async (cameraStream) => {
     setStep("loading");
     setQuestionError("");
+
     try {
-      const data = await generateQuestions(setup.experience, setup.techStack);
+      const data = await generateQuestions(
+        setup.experience,
+        setup.techStack
+      );
+
       setQuestions(data.questions);
       setStream(cameraStream);
       setStep("interview");
     } catch (error) {
       console.error("Question generation failed:", error);
-      stopStream(cameraStream); // don't leave the camera light on
-      setQuestionError("Unable to generate interview questions. Please try again.");
+
+      stopStream(cameraStream);
+
+      setQuestionError(
+        "Unable to generate interview questions. Please try again."
+      );
+
       setStep("error");
     }
   };
 
+  // ------------------------------------------------
+  // Leave interview
+  // ------------------------------------------------
+
   const leave = () => {
     stopStream();
+
     setStream(null);
     setQuestions([]);
     setFinalAnswers([]);
     setQuestionError("");
-    setStep("home");
+
+    setStep("dashboard");
   };
+
+  // ------------------------------------------------
+  // Finish interview
+  // ------------------------------------------------
 
   const finish = (answers) => {
     stopStream();
+
     setStream(null);
     setFinalAnswers(answers);
-    console.log("Answers for feedback:", answers); // next step: send to FastAPI
+
+    // Count answered questions
+    const answeredQuestions = answers.filter(
+      (item) => item.answer?.trim()
+    ).length;
+
+    // Create interview session
+    const session = {
+      id: Date.now(),
+      techStack: setup?.techStack || "Technical",
+      experience: setup?.experience || "Fresher",
+      totalQuestions: answers.length,
+      answeredQuestions,
+      completedAt: new Date().toISOString(),
+    };
+
+    // Add newest interview at the beginning
+    const updatedSessions = [
+      session,
+      ...completedSessions,
+    ];
+
+    setCompletedSessions(updatedSessions);
+
+    // Save in browser
+    localStorage.setItem(
+      "rehearsal_sessions",
+      JSON.stringify(updatedSessions)
+    );
+
+    console.log("Interview completed:", session);
+    console.log("Answers for feedback:", answers);
+
     setStep("finished");
   };
 
-  // The interview room is full-screen and has its own header + timer
+  // ------------------------------------------------
+  // Interview Room
+  // ------------------------------------------------
+
   if (step === "interview") {
     return (
       <InterviewRoom
@@ -211,72 +382,165 @@ function Signed() {
     );
   }
 
+  // ------------------------------------------------
+  // Main Application UI
+  // ------------------------------------------------
+
   return (
     <div className="home">
-      <header>
-        <div className="mark">
-          Rehearsal<span>.</span>
-        </div>
 
-        <UserButton />
-      </header>
+      {/* Header */}
 
-      {step === "home" && <Home onStart={() => setShowModal(true)} />}
+      {step !== "dashboard" && (
+        <header>
+          <div className="mark">
+            Rehearsal<span>.</span>
+          </div>
+
+          <UserButton />
+        </header>
+      )}
+
+      {/* Dashboard */}
+
+      {step === "dashboard" && (
+        <Dashboard
+          onStartInterview={() => {
+            setShowModal(true);
+          }}
+          sessions={completedSessions}
+        />
+      )}
+
+      {/* Old Home */}
+
+      {step === "home" && (
+        <Home
+          onStart={() => {
+            setShowModal(true);
+          }}
+        />
+      )}
+
+      {/* Permissions */}
 
       {step === "permissions" && (
         <PermissionStep
           setup={setup}
-          onBack={() => setStep("home")}
+          onBack={() => {
+            setStep("dashboard");
+          }}
           onGranted={startInterview}
         />
       )}
 
+      {/* Loading */}
+
       {step === "loading" && (
         <main>
           <p className="eyebrow">
-            {setup?.techStack} · {levelText(setup?.experience)}
+            {setup?.techStack} ·{" "}
+            {levelText(setup?.experience)}
           </p>
-          <h1>Preparing your interview…</h1>
+
+          <h1>
+            Preparing your interview…
+          </h1>
+
           <p className="lede">
-            Generating questions based on your experience and tech stack.
+            Generating questions based on your
+            experience and tech stack.
           </p>
         </main>
       )}
 
+      {/* Error */}
+
       {step === "error" && (
         <main>
-          <h1>Something went wrong</h1>
-          <p className="error" role="alert">
+          <h1>
+            Something went wrong
+          </h1>
+
+          <p
+            className="error"
+            role="alert"
+          >
             {questionError}
           </p>
+
           <div className="btn-row">
-            <button className="btn-ghost" onClick={leave}>
+
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setStep("dashboard");
+              }}
+            >
               Cancel
             </button>
-            <button className="cta" onClick={() => setStep("permissions")}>
+
+            <button
+              className="cta"
+              onClick={() => {
+                setStep("permissions");
+              }}
+            >
               Try again
             </button>
+
           </div>
         </main>
       )}
 
+      {/* Finished */}
+
       {step === "finished" && (
         <main>
-          <p className="eyebrow">Interview complete</p>
-          <h1>Nice work.</h1>
-          <p className="lede">
-            You answered {finalAnswers.filter((a) => a.answer).length} of{" "}
-            {finalAnswers.length} questions. Your feedback report comes next.
+
+          <p className="eyebrow">
+            Interview complete
           </p>
-          <button className="cta" onClick={leave}>
-            Back to home
+
+          <h1>
+            Nice work.
+          </h1>
+
+          <p className="lede">
+            You answered{" "}
+            {
+              finalAnswers.filter(
+                (answer) => answer.answer?.trim()
+              ).length
+            }{" "}
+            of{" "}
+            {finalAnswers.length} questions.
+          </p>
+
+          <p className="lede">
+            Your interview progress has been saved.
+            Your feedback report comes next.
+          </p>
+
+          <button
+            className="cta"
+            onClick={() => {
+              setStep("dashboard");
+            }}
+          >
+            Back to Dashboard
           </button>
+
         </main>
       )}
 
+      {/* Interview Setup Modal */}
+
       {showModal && (
         <InterviewSetupModal
-          onClose={() => setShowModal(false)}
+          onClose={() => {
+            setShowModal(false);
+          }}
           onStart={(data) => {
             setSetup(data);
             setShowModal(false);
@@ -284,20 +548,7 @@ function Signed() {
           }}
         />
       )}
+
     </div>
-  );
-}
-
-export default function App() {
-  return (
-    <>
-      <SignedOut>
-        <AuthPage />
-      </SignedOut>
-
-      <SignedIn>
-        <Signed />
-      </SignedIn>
-    </>
   );
 }

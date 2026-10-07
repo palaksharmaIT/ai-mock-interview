@@ -20,13 +20,21 @@ function Dashboard({ onStartInterview }) {
       <header className="dashboard-header">
         <div className="dashboard-brand">
           <div className="brand-mark">R</div>
-          <span>Rehearsal<span className="brand-dot">.</span></span>
+
+          <span>
+            Rehearsal<span className="brand-dot">.</span>
+          </span>
         </div>
 
         <div className="dashboard-user">
           <div className="user-info">
-            <strong>{user?.fullName || user?.firstName || "User"}</strong>
-            <span>{user?.primaryEmailAddress?.emailAddress || ""}</span>
+            <strong>
+              {user?.fullName || user?.firstName || "User"}
+            </strong>
+
+            <span>
+              {user?.primaryEmailAddress?.emailAddress || ""}
+            </span>
           </div>
 
           <UserButton />
@@ -35,11 +43,12 @@ function Dashboard({ onStartInterview }) {
 
       {/* Main */}
       <main className="dashboard-content">
-
         {/* Welcome Section */}
         <section className="dashboard-hero">
           <div>
-            <p className="dashboard-eyebrow">CANDIDATE WORKSPACE</p>
+            <p className="dashboard-eyebrow">
+              CANDIDATE WORKSPACE
+            </p>
 
             <h1>
               Welcome back,{" "}
@@ -47,8 +56,8 @@ function Dashboard({ onStartInterview }) {
             </h1>
 
             <p className="dashboard-subtitle">
-              Track your technical interview progress, review feedback
-              breakdowns, and run practice sessions.
+              Track your technical interview progress, review
+              feedback breakdowns, and run practice sessions.
             </p>
           </div>
 
@@ -63,7 +72,6 @@ function Dashboard({ onStartInterview }) {
 
         {/* Stats */}
         <section className="stats-grid">
-
           <div className="stat-card">
             <div className="stat-card-top">
               <span>Completed Sessions</span>
@@ -119,18 +127,17 @@ function Dashboard({ onStartInterview }) {
               Your best interview performance
             </p>
           </div>
-
         </section>
 
         {/* Score Trajectory */}
         <section className="trajectory-card">
-
           <div className="trajectory-header">
             <div>
               <h2>Score Trajectory</h2>
 
               <p>
-                Performance trend across your recent technical sessions
+                Performance trend across your recent technical
+                sessions
               </p>
             </div>
 
@@ -140,10 +147,11 @@ function Dashboard({ onStartInterview }) {
           </div>
 
           <div className="chart-wrapper">
-
             {stats.completedSessions === 0 ? (
               <div className="empty-chart">
-                <div className="empty-chart-icon">↗</div>
+                <div className="empty-chart-icon">
+                  ↗
+                </div>
 
                 <h3>No interview data yet</h3>
 
@@ -164,19 +172,18 @@ function Dashboard({ onStartInterview }) {
                 {/* Future dynamic chart */}
               </div>
             )}
-
           </div>
         </section>
 
         {/* Past Sessions */}
         <section className="sessions-section">
-
           <div className="sessions-header">
             <div>
               <h2>Past Interview Sessions</h2>
 
               <p>
-                Detailed logs of all completed technical evaluations
+                Detailed logs of all completed technical
+                evaluations
               </p>
             </div>
 
@@ -190,7 +197,6 @@ function Dashboard({ onStartInterview }) {
 
           {recentSessions.length === 0 ? (
             <div className="empty-sessions">
-
               <div className="empty-sessions-icon">
                 ◌
               </div>
@@ -198,7 +204,8 @@ function Dashboard({ onStartInterview }) {
               <h3>No interviews completed yet</h3>
 
               <p>
-                Your completed interviews and AI feedback will appear here.
+                Your completed interviews and AI feedback will
+                appear here.
               </p>
 
               <button
@@ -207,7 +214,6 @@ function Dashboard({ onStartInterview }) {
               >
                 Start New Interview
               </button>
-
             </div>
           ) : (
             <div className="sessions-list">
@@ -232,9 +238,7 @@ function Dashboard({ onStartInterview }) {
               ))}
             </div>
           )}
-
         </section>
-
       </main>
     </div>
   );
