@@ -35,7 +35,7 @@ export default function InterviewRoom({ setup, questions, stream, onFinish, onCa
   );
   const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
 
-  // Clock (uses real timestamps, so it stays accurate if the tab is throttled)
+
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
