@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "./proctoring.css";
 
 function explain(err) {
   switch (err?.name) {
@@ -67,7 +68,9 @@ export default function PermissionStep({ setup, onGranted, onBack }) {
 
   return (
     <div className="perm">
-      <p className="eyebrow">{setup.techStack} · {setup.experience} years</p>
+      <p className="eyebrow">
+        {setup.techStack} · {setup.experience === "Fresher" ? "Fresher" : `${setup.experience} years`}
+      </p>
 
       {status === "asking" && (
         <>
@@ -83,6 +86,12 @@ export default function PermissionStep({ setup, onGranted, onBack }) {
           <h1>Looking good.</h1>
           <p className="lede">Check that you're in frame and your mic is picking you up, then start.</p>
           <video ref={videoRef} autoPlay muted playsInline className="preview" />
+          <p className="consent">
+            <strong>Integrity check:</strong> during the interview your camera is analysed in your
+            browser to spot things like leaving the frame, another person appearing, or looking away
+            for long periods. Your video is never uploaded. If something looks unusual, a small
+            snapshot of that moment is saved with your report. You get up to 3 warnings.
+          </p>
           <div className="btn-row left">
             <button className="btn-ghost" onClick={onBack}>Back</button>
             <button className="cta" onClick={proceed}>Begin interview</button>

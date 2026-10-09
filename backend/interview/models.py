@@ -10,7 +10,7 @@ class InterviewSession(models.Model):
 
     answers = models.JSONField(default=list)
 
-    # AI Evaluation
+   
     overall_score = models.FloatField(default=0)
     evaluation = models.JSONField(default=dict)
 

@@ -1,0 +1,76 @@
+/* Integrity check: status chip, warning popup, camera highlight, consent note */
+
+/* ---------- status chip in the top bar ---------- */
+.room .room-bar { grid-template-columns: 1fr auto auto 1fr; column-gap: 1.25rem; }
+
+.proctor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.proctor-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.proctor-chip.ready .proctor-dot { background: #3f7d4e; }
+.proctor-chip.error .proctor-dot { background: var(--rust); }
+
+/* ---------- warning popup ---------- */
+.proctor-toast {
+  position: fixed;
+  top: 4.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(30rem, calc(100vw - 2rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.85rem 1.1rem;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--rust);
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(29, 27, 23, 0.18);
+  font-size: 0.92rem;
+}
+.proctor-toast strong {
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rust);
+}
+.proctor-toast.final { background: var(--rust); color: #fff; border-color: var(--rust); }
+.proctor-toast.final strong { color: #fff; }
+
+/* ---------- camera box turns rust while a problem is happening ---------- */
+.pip.flagged { border-color: var(--rust); }
+
+/* ---------- consent note on the permission screen ---------- */
+.consent {
+  max-width: 32rem;
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .room .room-bar { grid-template-columns: 1fr auto; }
+  .room .proctor-chip { grid-column: 1 / -1; justify-self: start; margin-top: 0.5rem; }
+}

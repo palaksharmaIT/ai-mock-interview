@@ -144,11 +144,7 @@ Use exactly this format:
         }, status=500)
 
 
-# --------------------------------------------------
-# Interview Sessions
-# GET  -> Fetch sessions
-# POST -> Save session
-# --------------------------------------------------
+
 
 @csrf_exempt
 def sessions(request):
