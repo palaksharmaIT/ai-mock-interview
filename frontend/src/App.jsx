@@ -13,6 +13,7 @@ import {
   SignUp,
   UserButton,
   useUser,
+  useAuth,
 } from "@clerk/clerk-react";
 
 import InterviewSetupModal from "./components/InterviewSetupModal";
@@ -34,28 +35,23 @@ const appearance = {
     fontFamily: "'Instrument Sans', system-ui, sans-serif",
     borderRadius: "3px",
   },
-
   elements: {
     rootBox: {
       width: "100%",
     },
-
     cardBox: {
       width: "100%",
       boxShadow: "none",
     },
-
     card: {
       boxShadow: "none",
       background: "transparent",
       border: "none",
       padding: 0,
     },
-
     header: {
       display: "none",
     },
-
     footerAction: {
       display: "none",
     },
@@ -63,11 +59,56 @@ const appearance = {
 };
 
 // --------------------------------------------------
-// Helper
+// Helpers
 // --------------------------------------------------
 
 const levelText = (exp) => {
   return exp === "Fresher" ? "Fresher" : `${exp} years`;
+};
+
+const readLocalSessions = (storageKey) => {
+  if (!storageKey) return [];
+
+  try {
+    const saved = localStorage.getItem(storageKey);
+    const sessions = saved ? JSON.parse(saved) : [];
+    return Array.isArray(sessions) ? sessions : [];
+  } catch (error) {
+    console.error("Unable to load local interview history:", error);
+    return [];
+  }
+};
+
+const saveLocalSessions = (storageKey, sessions) => {
+  if (!storageKey) return;
+
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(sessions));
+  } catch (error) {
+    console.error("Unable to save local interview history:", error);
+  }
+};
+
+const mergeSessions = (backendSessions, localSessions) => {
+  const combined = [...backendSessions, ...localSessions];
+  const seen = new Set();
+
+  const unique = combined.filter((session) => {
+    if (session?.id == null) return true;
+
+    const id = String(session.id);
+
+    if (seen.has(id)) return false;
+
+    seen.add(id);
+    return true;
+  });
+
+  return unique.sort(
+    (a, b) =>
+      new Date(b.completedAt || b.completed_at || 0).getTime() -
+      new Date(a.completedAt || a.completed_at || 0).getTime()
+  );
 };
 
 // --------------------------------------------------
@@ -98,44 +139,31 @@ function AuthPage() {
         <ol className="steps">
           <li>
             <span className="n">01</span>
-
             <div>
               <strong>Set your interview</strong>
-
-              <p>
-                Choose your experience level and tech stack.
-              </p>
+              <p>Choose your experience level and tech stack.</p>
             </div>
           </li>
 
           <li>
             <span className="n">02</span>
-
             <div>
               <strong>Practice naturally</strong>
-
-              <p>
-                Answer questions using your camera and microphone.
-              </p>
+              <p>Answer questions using your camera and microphone.</p>
             </div>
           </li>
 
           <li>
             <span className="n">03</span>
-
             <div>
               <strong>Get feedback</strong>
-
-              <p>
-                Review your performance and identify areas to improve.
-              </p>
+              <p>Review your performance and identify areas to improve.</p>
             </div>
           </li>
         </ol>
 
         <blockquote className="sample">
           <span>Interview mindset</span>
-
           “You don't need perfect answers. You need practice.”
         </blockquote>
       </section>
@@ -164,28 +192,14 @@ function AuthPage() {
         {mode === "signin" ? (
           <>
             <h2>Welcome back.</h2>
-
-            <p className="sub">
-              Continue your interview practice.
-            </p>
-
-            <SignIn
-              routing="hash"
-              appearance={appearance}
-            />
+            <p className="sub">Continue your interview practice.</p>
+            <SignIn routing="hash" appearance={appearance} />
           </>
         ) : (
           <>
             <h2>Create your account.</h2>
-
-            <p className="sub">
-              Start preparing for your next interview.
-            </p>
-
-            <SignUp
-              routing="hash"
-              appearance={appearance}
-            />
+            <p className="sub">Start preparing for your next interview.</p>
+            <SignUp routing="hash" appearance={appearance} />
           </>
         )}
       </section>
@@ -203,14 +217,10 @@ function Home({ onStart }) {
   return (
     <main>
       <p className="eyebrow">
-        {user?.firstName
-          ? `Hello, ${user.firstName}`
-          : "Hello"}
+        {user?.firstName ? `Hello, ${user.firstName}` : "Hello"}
       </p>
 
-      <h1>
-        Ready for your mock interview?
-      </h1>
+      <h1>Ready for your mock interview?</h1>
 
       <p className="lede">
         Practice your technical interview with AI.
@@ -222,10 +232,7 @@ function Home({ onStart }) {
         <li>Camera and mic</li>
       </ul>
 
-      <button
-        className="cta"
-        onClick={onStart}
-      >
+      <button className="cta" onClick={onStart}>
         Start Interview
       </button>
     </main>
@@ -237,6 +244,13 @@ function Home({ onStart }) {
 // --------------------------------------------------
 
 function Signed() {
+  const { getToken } = useAuth();
+  const { user } = useUser();
+
+  const localStorageKey = user?.id
+    ? `rehearsal_sessions_${user.id}`
+    : null;
+
   const [step, setStep] = useState("dashboard");
   const [showModal, setShowModal] = useState(false);
   const [setup, setSetup] = useState(null);
@@ -246,81 +260,58 @@ function Signed() {
   const [evaluation, setEvaluation] = useState(null);
   const [questionError, setQuestionError] = useState("");
   const [evaluationError, setEvaluationError] = useState("");
+  const [completedSessions, setCompletedSessions] = useState([]);
 
   // ------------------------------------------------
-  // Completed interview history
-  // ------------------------------------------------
-
-  const [completedSessions, setCompletedSessions] = useState(() => {
-    try {
-      const saved = localStorage.getItem("rehearsal_sessions");
-
-      return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-      console.error(
-        "Unable to load local interview history:",
-        error
-      );
-
-      return [];
-    }
-  });
-
-  // ------------------------------------------------
-  // Load sessions from Django
+  // Load sessions from Django and local storage
   // ------------------------------------------------
 
   useEffect(() => {
+    if (!localStorageKey) return;
+
+    let cancelled = false;
+
     const loadSessions = async () => {
+      const localSessions = readLocalSessions(localStorageKey);
+
       try {
-        const data = await getInterviewSessions();
+        const token = await getToken();
 
-        const backendSessions = data.sessions || [];
+        if (!token) {
+          throw new Error(
+            "Clerk did not provide an authentication token."
+          );
+        }
 
-        const localSessions = (() => {
-          try {
-            const saved =
-              localStorage.getItem("rehearsal_sessions");
+        const data = await getInterviewSessions(token);
+        const backendSessions = Array.isArray(data.sessions)
+          ? data.sessions
+          : [];
 
-            return saved ? JSON.parse(saved) : [];
-          } catch {
-            return [];
-          }
-        })();
-
-        const combinedSessions = [
-          ...backendSessions,
-          ...localSessions,
-        ].filter(
-          (session, index, self) =>
-            index ===
-            self.findIndex(
-              (item) => String(item.id) === String(session.id)
-            )
+        const combinedSessions = mergeSessions(
+          backendSessions,
+          localSessions
         );
 
-        combinedSessions.sort(
-          (a, b) =>
-            new Date(b.completedAt || 0) -
-            new Date(a.completedAt || 0)
-        );
-
-        setCompletedSessions(combinedSessions);
-
-        console.log(
-          "Interview sessions loaded:",
-          combinedSessions
-        );
+        if (!cancelled) {
+          setCompletedSessions(combinedSessions);
+          saveLocalSessions(localStorageKey, combinedSessions);
+        }
       } catch (error) {
-        console.error(
-          "Unable to load interview sessions:",
-          error
-        );
+        console.error("Unable to load interview sessions:", error);
+
+        if (!cancelled) {
+          setCompletedSessions(localSessions);
+        }
       }
     };
 
     loadSessions();
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken, localStorageKey]);
 
   // ------------------------------------------------
   // Stop camera / microphone
@@ -341,19 +332,27 @@ function Signed() {
     setQuestionError("");
 
     try {
+      const token = await getToken();
+
+      if (!token) {
+        throw new Error("Please sign in again to continue.");
+      }
+
       const data = await generateQuestions(
         setup.experience,
-        setup.techStack
+        setup.techStack,
+        token
       );
+
+      if (!Array.isArray(data.questions) || data.questions.length === 0) {
+        throw new Error("The backend returned no interview questions.");
+      }
 
       setQuestions(data.questions);
       setStream(cameraStream);
       setStep("interview");
     } catch (error) {
-      console.error(
-        "Question generation failed:",
-        error
-      );
+      console.error("Question generation failed:", error);
 
       stopStream(cameraStream);
 
@@ -386,7 +385,7 @@ function Signed() {
   // Finish interview
   // ------------------------------------------------
 
-  const finish = async (answers) => {
+  const finish = async (answers, proctoring = {}) => {
     stopStream();
 
     setStream(null);
@@ -398,46 +397,40 @@ function Signed() {
       (item) => item.answer?.trim()
     ).length;
 
-    // ----------------------------------------------
-    // Step 1: Evaluate interview using AI
-    // ----------------------------------------------
-
+    // Evaluate interview using AI
     setStep("evaluating");
 
     let aiEvaluation = null;
 
     try {
+      const token = await getToken();
+
+      if (!token) {
+        throw new Error("Please sign in again to continue.");
+      }
+
       const evaluationData = await evaluateInterview({
         techStack: setup?.techStack || "Technical",
         experience: setup?.experience || "Fresher",
         answers,
+        token,
       });
 
       aiEvaluation = evaluationData.evaluation;
-
       setEvaluation(aiEvaluation);
 
-      console.log(
-        "AI evaluation received:",
-        aiEvaluation
-      );
+      console.log("AI evaluation received:", aiEvaluation);
     } catch (error) {
-      console.error(
-        "Interview evaluation failed:",
-        error
-      );
+      console.error("Interview evaluation failed:", error);
 
       setEvaluationError(
         "Unable to generate AI feedback. Your interview answers can still be saved."
       );
     }
 
-    // ----------------------------------------------
-    // Step 2: Save interview session
-    // ----------------------------------------------
-
+    // Prepare local fallback session
     const localSession = {
-      id: Date.now(),
+      id: `local-${Date.now()}`,
       techStack: setup?.techStack || "Technical",
       experience: setup?.experience || "Fresher",
       totalQuestions: answers.length,
@@ -447,61 +440,54 @@ function Signed() {
       completedAt: new Date().toISOString(),
     };
 
+    // Save session to Django
     try {
+      const token = await getToken();
+
+      if (!token) {
+        throw new Error("Please sign in again to continue.");
+      }
+
       const data = await saveInterviewSession({
         techStack: setup?.techStack || "Technical",
         experience: setup?.experience || "Fresher",
         answers,
         evaluation: aiEvaluation || {},
         overallScore: aiEvaluation?.overallScore || 0,
+        proctoring,
+        token,
       });
 
       const backendSession = data.session;
 
-      const updatedSessions = [
-        backendSession,
-        ...completedSessions,
-      ];
+      if (!backendSession) {
+        throw new Error("The backend did not return the saved session.");
+      }
+
+      const updatedSessions = mergeSessions(
+        [backendSession],
+        completedSessions
+      );
 
       setCompletedSessions(updatedSessions);
+      saveLocalSessions(localStorageKey, updatedSessions);
 
-      localStorage.setItem(
-        "rehearsal_sessions",
-        JSON.stringify(updatedSessions)
-      );
-
-      console.log(
-        "Interview saved to Django:",
-        backendSession
-      );
+      console.log("Interview saved to Django:", backendSession);
     } catch (error) {
-      console.error(
-        "Unable to save interview to backend:",
-        error
-      );
+      console.error("Unable to save interview to backend:", error);
 
-      const updatedSessions = [
-        localSession,
-        ...completedSessions,
-      ];
+      const updatedSessions = mergeSessions(
+        [localSession],
+        completedSessions
+      );
 
       setCompletedSessions(updatedSessions);
+      saveLocalSessions(localStorageKey, updatedSessions);
 
-      localStorage.setItem(
-        "rehearsal_sessions",
-        JSON.stringify(updatedSessions)
-      );
-
-      console.log(
-        "Interview saved locally as fallback:",
-        localSession
-      );
+      console.log("Interview saved locally as fallback:", localSession);
     }
 
-    console.log(
-      "Answers for feedback:",
-      answers
-    );
+    console.log("Answers for feedback:", answers);
 
     setStep("finished");
   };
@@ -528,121 +514,79 @@ function Signed() {
 
   return (
     <div className="home">
-
-      {/* Header */}
-
       {step !== "dashboard" && (
         <header>
           <div className="mark">
             Rehearsal<span>.</span>
           </div>
-
           <UserButton />
         </header>
       )}
 
-      {/* Dashboard */}
-
       {step === "dashboard" && (
         <Dashboard
-          onStartInterview={() => {
-            setShowModal(true);
-          }}
+          onStartInterview={() => setShowModal(true)}
           sessions={completedSessions}
         />
       )}
 
-      {/* Old Home */}
-
       {step === "home" && (
-        <Home
-          onStart={() => {
-            setShowModal(true);
-          }}
-        />
+        <Home onStart={() => setShowModal(true)} />
       )}
-
-      {/* Permissions */}
 
       {step === "permissions" && (
         <PermissionStep
           setup={setup}
-          onBack={() => {
-            setStep("dashboard");
-          }}
+          onBack={() => setStep("dashboard")}
           onGranted={startInterview}
         />
       )}
 
-      {/* Loading */}
-
       {step === "loading" && (
         <main>
           <p className="eyebrow">
-            {setup?.techStack} ·{" "}
-            {levelText(setup?.experience)}
+            {setup?.techStack} · {levelText(setup?.experience)}
           </p>
 
-          <h1>
-            Preparing your interview…
-          </h1>
+          <h1>Preparing your interview…</h1>
 
           <p className="lede">
-            Generating questions based on your
-            experience and tech stack.
+            Generating questions based on your experience and tech stack.
           </p>
         </main>
       )}
-
-      {/* AI Evaluation */}
 
       {step === "evaluating" && (
         <main>
-          <p className="eyebrow">
-            Interview complete
-          </p>
+          <p className="eyebrow">Interview complete</p>
 
-          <h1>
-            Reviewing your performance…
-          </h1>
+          <h1>Reviewing your performance…</h1>
 
           <p className="lede">
-            AI is analyzing your answers and preparing
-            your interview feedback.
+            AI is analyzing your answers and preparing your interview feedback.
           </p>
         </main>
       )}
 
-      {/* Error */}
-
       {step === "error" && (
         <main>
-          <h1>
-            Something went wrong
-          </h1>
+          <h1>Something went wrong</h1>
 
-          <p
-            className="error"
-            role="alert"
-          >
+          <p className="error" role="alert">
             {questionError}
           </p>
 
           <div className="btn-row">
             <button
               className="btn-ghost"
-              onClick={() => {
-                setStep("dashboard");
-              }}
+              onClick={() => setStep("dashboard")}
             >
               Cancel
             </button>
 
             <button
               className="cta"
-              onClick={() => {
-                setStep("permissions");
-              }}
+              onClick={() => setStep("permissions")}
             >
               Try again
             </button>
@@ -650,47 +594,29 @@ function Signed() {
         </main>
       )}
 
-      {/* Finished */}
-
       {step === "finished" && (
         <main>
-          <p className="eyebrow">
-            Interview complete
-          </p>
+          <p className="eyebrow">Interview complete</p>
 
-          <h1>
-            Nice work.
-          </h1>
+          <h1>Nice work.</h1>
 
           <p className="lede">
             You answered{" "}
-            {
-              finalAnswers.filter(
-                (answer) => answer.answer?.trim()
-              ).length
-            }{" "}
-            of{" "}
-            {finalAnswers.length} questions.
+            {finalAnswers.filter((answer) => answer.answer?.trim()).length}{" "}
+            of {finalAnswers.length} questions.
           </p>
 
           {evaluation && (
             <div style={{ marginTop: "30px" }}>
-              <h2>
-                Overall Score: {evaluation.overallScore}/100
-              </h2>
+              <h2>Overall Score: {evaluation.overallScore}/100</h2>
 
               {evaluation.strengths?.length > 0 && (
                 <div style={{ marginTop: "20px" }}>
                   <h3>Strengths</h3>
-
                   <ul>
-                    {evaluation.strengths.map(
-                      (item, index) => (
-                        <li key={index}>
-                          {item}
-                        </li>
-                      )
-                    )}
+                    {evaluation.strengths.map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
                   </ul>
                 </div>
               )}
@@ -698,15 +624,10 @@ function Signed() {
               {evaluation.weaknesses?.length > 0 && (
                 <div style={{ marginTop: "20px" }}>
                   <h3>Areas to Improve</h3>
-
                   <ul>
-                    {evaluation.weaknesses.map(
-                      (item, index) => (
-                        <li key={index}>
-                          {item}
-                        </li>
-                      )
-                    )}
+                    {evaluation.weaknesses.map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
                   </ul>
                 </div>
               )}
@@ -714,15 +635,10 @@ function Signed() {
               {evaluation.improvements?.length > 0 && (
                 <div style={{ marginTop: "20px" }}>
                   <h3>Suggestions</h3>
-
                   <ul>
-                    {evaluation.improvements.map(
-                      (item, index) => (
-                        <li key={index}>
-                          {item}
-                        </li>
-                      )
-                    )}
+                    {evaluation.improvements.map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
                   </ul>
                 </div>
               )}
@@ -730,10 +646,7 @@ function Signed() {
           )}
 
           {evaluationError && (
-            <p
-              className="error"
-              style={{ marginTop: "20px" }}
-            >
+            <p className="error" style={{ marginTop: "20px" }}>
               {evaluationError}
             </p>
           )}
@@ -741,22 +654,16 @@ function Signed() {
           <button
             className="cta"
             style={{ marginTop: "30px" }}
-            onClick={() => {
-              setStep("dashboard");
-            }}
+            onClick={() => setStep("dashboard")}
           >
             Back to Dashboard
           </button>
         </main>
       )}
 
-      {/* Interview Setup Modal */}
-
       {showModal && (
         <InterviewSetupModal
-          onClose={() => {
-            setShowModal(false);
-          }}
+          onClose={() => setShowModal(false)}
           onStart={(data) => {
             setSetup(data);
             setShowModal(false);

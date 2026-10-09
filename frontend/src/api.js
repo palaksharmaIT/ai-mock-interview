@@ -1,8 +1,38 @@
 const API_BASE_URL = "http://127.0.0.1:8000";
 
+// --------------------------------------------------
+// Authentication headers
+// --------------------------------------------------
+
+async function authHeaders(token) {
+  if (!token) {
+    throw new Error(
+      "Authentication required. Please sign in again."
+    );
+  }
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+}
 
 // --------------------------------------------------
-// Check backend
+// Handle API errors
+// --------------------------------------------------
+
+async function handleApiError(response, fallbackMessage) {
+  const errorData = await response.json().catch(() => ({}));
+
+  throw new Error(
+    errorData.message ||
+      errorData.detail ||
+      fallbackMessage
+  );
+}
+
+// --------------------------------------------------
+// Check backend (public endpoint)
 // --------------------------------------------------
 
 export async function checkBackend() {
@@ -17,22 +47,20 @@ export async function checkBackend() {
   return response.json();
 }
 
-
 // --------------------------------------------------
 // Generate interview questions
 // --------------------------------------------------
 
 export async function generateQuestions(
   experience,
-  techStack
+  techStack,
+  token
 ) {
   const response = await fetch(
     `${API_BASE_URL}/api/interview/generate-questions/`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: await authHeaders(token),
       body: JSON.stringify({
         experience,
         techStack,
@@ -41,12 +69,14 @@ export async function generateQuestions(
   );
 
   if (!response.ok) {
-    throw new Error("Question generation failed");
+    await handleApiError(
+      response,
+      "Question generation failed"
+    );
   }
 
   return response.json();
 }
-
 
 // --------------------------------------------------
 // Save completed interview session
@@ -58,57 +88,57 @@ export async function saveInterviewSession({
   answers,
   evaluation,
   overallScore,
+  proctoring = {},
+  token,
 }) {
   const response = await fetch(
     `${API_BASE_URL}/api/interview/sessions/`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: await authHeaders(token),
       body: JSON.stringify({
         techStack,
         experience,
         answers,
         evaluation,
         overallScore,
+        proctoring,
       }),
     }
   );
 
   if (!response.ok) {
-    const errorData = await response.json().catch(
-      () => ({})
-    );
-
-    throw new Error(
-      errorData.message ||
-        "Unable to save interview session"
+    await handleApiError(
+      response,
+      "Unable to save interview session"
     );
   }
 
   return response.json();
 }
 
-
 // --------------------------------------------------
 // Get previous interview sessions
 // --------------------------------------------------
 
-export async function getInterviewSessions() {
+export async function getInterviewSessions(token) {
   const response = await fetch(
-    `${API_BASE_URL}/api/interview/sessions/`
+    `${API_BASE_URL}/api/interview/sessions/`,
+    {
+      method: "GET",
+      headers: await authHeaders(token),
+    }
   );
 
   if (!response.ok) {
-    throw new Error(
+    await handleApiError(
+      response,
       "Unable to fetch interview sessions"
     );
   }
 
   return response.json();
 }
-
 
 // --------------------------------------------------
 // Evaluate completed interview
@@ -118,14 +148,13 @@ export async function evaluateInterview({
   techStack,
   experience,
   answers,
+  token,
 }) {
   const response = await fetch(
     `${API_BASE_URL}/api/interview/evaluate-interview/`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: await authHeaders(token),
       body: JSON.stringify({
         techStack,
         experience,
@@ -135,13 +164,9 @@ export async function evaluateInterview({
   );
 
   if (!response.ok) {
-    const errorData = await response.json().catch(
-      () => ({})
-    );
-
-    throw new Error(
-      errorData.message ||
-        "Unable to evaluate interview"
+    await handleApiError(
+      response,
+      "Unable to evaluate interview"
     );
   }
 
