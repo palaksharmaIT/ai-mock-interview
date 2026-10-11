@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import {
   generateQuestions,
@@ -36,25 +37,16 @@ const appearance = {
     borderRadius: "3px",
   },
   elements: {
-    rootBox: {
-      width: "100%",
-    },
-    cardBox: {
-      width: "100%",
-      boxShadow: "none",
-    },
+    rootBox: { width: "100%" },
+    cardBox: { width: "100%", boxShadow: "none" },
     card: {
       boxShadow: "none",
       background: "transparent",
       border: "none",
       padding: 0,
     },
-    header: {
-      display: "none",
-    },
-    footerAction: {
-      display: "none",
-    },
+    header: { display: "none" },
+    footerAction: { display: "none" },
   },
 };
 
@@ -62,9 +54,8 @@ const appearance = {
 // Helpers
 // --------------------------------------------------
 
-const levelText = (exp) => {
-  return exp === "Fresher" ? "Fresher" : `${exp} years`;
-};
+const levelText = (exp) =>
+  exp === "Fresher" ? "Fresher" : `${exp} years`;
 
 const readLocalSessions = (storageKey) => {
   if (!storageKey) return [];
@@ -222,9 +213,7 @@ function Home({ onStart }) {
 
       <h1>Ready for your mock interview?</h1>
 
-      <p className="lede">
-        Practice your technical interview with AI.
-      </p>
+      <p className="lede">Practice your technical interview with AI.</p>
 
       <ul className="facts">
         <li>10 questions</li>
@@ -261,6 +250,9 @@ function Signed() {
   const [questionError, setQuestionError] = useState("");
   const [evaluationError, setEvaluationError] = useState("");
   const [completedSessions, setCompletedSessions] = useState([]);
+
+  // Draft currently selected for resuming.
+  const [resumeDraft, setResumeDraft] = useState(null);
 
   // ------------------------------------------------
   // Load sessions from Django and local storage
@@ -324,7 +316,58 @@ function Signed() {
   };
 
   // ------------------------------------------------
-  // Generate interview questions
+  // Select a saved draft from the dashboard
+  // ------------------------------------------------
+
+  const handleResumeDraft = (draft) => {
+    if (
+      !draft?.setup ||
+      !Array.isArray(draft.questions) ||
+      draft.questions.length === 0
+    ) {
+      console.error("Invalid interview draft.");
+      return;
+    }
+
+    setSetup(draft.setup);
+    setResumeDraft(draft);
+    setQuestionError("");
+    setEvaluationError("");
+    setStep("permissions");
+  };
+
+  // ------------------------------------------------
+  // Start a new interview or resume a saved draft
+  // ------------------------------------------------
+
+  const continueAfterPermission = async (cameraStream) => {
+    if (resumeDraft) {
+      if (
+        !Array.isArray(resumeDraft.questions) ||
+        resumeDraft.questions.length === 0
+      ) {
+        stopStream(cameraStream);
+        setResumeDraft(null);
+        setQuestionError("This saved interview is invalid. Please start again.");
+        setStep("error");
+        return;
+      }
+
+      setQuestions(resumeDraft.questions);
+      setStream(cameraStream);
+      setQuestionError("");
+      setStep("interview");
+
+      // InterviewRoom restores the saved answers and index from localStorage.
+      setResumeDraft(null);
+      return;
+    }
+
+    await startInterview(cameraStream);
+  };
+
+  // ------------------------------------------------
+  // Generate interview questions for a new interview
   // ------------------------------------------------
 
   const startInterview = async (cameraStream) => {
@@ -377,6 +420,7 @@ function Signed() {
     setEvaluation(null);
     setQuestionError("");
     setEvaluationError("");
+    setResumeDraft(null);
 
     setStep("dashboard");
   };
@@ -397,11 +441,11 @@ function Signed() {
       (item) => item.answer?.trim()
     ).length;
 
-    // Evaluate interview using AI
     setStep("evaluating");
 
     let aiEvaluation = null;
 
+    // Evaluate interview using AI.
     try {
       const token = await getToken();
 
@@ -428,7 +472,7 @@ function Signed() {
       );
     }
 
-    // Prepare local fallback session
+    // Prepare a local fallback session.
     const localSession = {
       id: `local-${Date.now()}`,
       techStack: setup?.techStack || "Technical",
@@ -440,7 +484,7 @@ function Signed() {
       completedAt: new Date().toISOString(),
     };
 
-    // Save session to Django
+    // Save session to Django.
     try {
       const token = await getToken();
 
@@ -525,7 +569,11 @@ function Signed() {
 
       {step === "dashboard" && (
         <Dashboard
-          onStartInterview={() => setShowModal(true)}
+          onStartInterview={() => {
+            setResumeDraft(null);
+            setShowModal(true);
+          }}
+          onResumeDraft={handleResumeDraft}
           sessions={completedSessions}
         />
       )}
@@ -537,8 +585,11 @@ function Signed() {
       {step === "permissions" && (
         <PermissionStep
           setup={setup}
-          onBack={() => setStep("dashboard")}
-          onGranted={startInterview}
+          onBack={() => {
+            setResumeDraft(null);
+            setStep("dashboard");
+          }}
+          onGranted={continueAfterPermission}
         />
       )}
 
@@ -579,7 +630,10 @@ function Signed() {
           <div className="btn-row">
             <button
               className="btn-ghost"
-              onClick={() => setStep("dashboard")}
+              onClick={() => {
+                setResumeDraft(null);
+                setStep("dashboard");
+              }}
             >
               Cancel
             </button>
@@ -666,6 +720,7 @@ function Signed() {
           onClose={() => setShowModal(false)}
           onStart={(data) => {
             setSetup(data);
+            setResumeDraft(null);
             setShowModal(false);
             setStep("permissions");
           }}

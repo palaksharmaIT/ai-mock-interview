@@ -1,16 +1,86 @@
+
 import { useState } from "react";
 import { useUser, UserButton } from "@clerk/clerk-react";
 import "./Dashboard.css";
+
+// --------------------------------------------------
+// Read saved interview drafts from local storage
+// --------------------------------------------------
+
+function readInterviewDrafts() {
+  try {
+    return Object.keys(localStorage)
+      .filter((key) => key.startsWith("rehearsal_draft_"))
+      .map((key) => {
+        try {
+          const rawDraft = localStorage.getItem(key);
+          if (!rawDraft) return null;
+
+          const draft = JSON.parse(rawDraft);
+
+          if (
+            !draft?.setup ||
+            !Array.isArray(draft.questions) ||
+            draft.questions.length === 0
+          ) {
+            return null;
+          }
+
+          const answers = Array.isArray(draft.answers)
+            ? draft.answers
+            : [];
+
+          return {
+            ...draft,
+            answers,
+            storageKey: key,
+            answeredCount: answers.filter((answer) => {
+              if (typeof answer === "string") {
+                return answer.trim().length > 0;
+              }
+
+              return Boolean(
+                typeof answer?.answer === "string" &&
+                  answer.answer.trim().length > 0
+              );
+            }).length,
+          };
+        } catch (error) {
+          console.error("Unable to read an interview draft:", error);
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort(
+        (a, b) =>
+          new Date(b.savedAt || 0).getTime() -
+          new Date(a.savedAt || 0).getTime()
+      );
+  } catch (error) {
+    console.error("Unable to load interview drafts:", error);
+    return [];
+  }
+}
 
 // --------------------------------------------------
 // Get AI score out of 100
 // --------------------------------------------------
 
 function getScore(session) {
-  if (typeof session.overallScore === "number") return session.overallScore;
-  if (typeof session.rating === "number") return session.rating * 10;
-  if (typeof session.finalRating === "number") return session.finalRating * 10;
+  if (typeof session.overallScore === "number") {
+    return session.overallScore;
+  }
+
+  if (typeof session.rating === "number") {
+    return session.rating * 10;
+  }
+
+  if (typeof session.finalRating === "number") {
+    return session.finalRating * 10;
+  }
+
   if (!session.totalQuestions) return 0;
+
   return (session.answeredQuestions / session.totalQuestions) * 100;
 }
 
@@ -26,8 +96,11 @@ function scoreTone(score) {
 
 function formatDate(value) {
   if (!value) return null;
+
   const d = new Date(value);
+
   if (Number.isNaN(d.getTime())) return null;
+
   return d.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -45,7 +118,9 @@ function TrendChart({ sessions }) {
   const W = 600;
   const H = 160;
   const pad = 20;
-  const step = scores.length > 1 ? (W - pad * 2) / (scores.length - 1) : 0;
+
+  const step =
+    scores.length > 1 ? (W - pad * 2) / (scores.length - 1) : 0;
 
   const points = scores.map((score, i) => [
     pad + i * step,
@@ -56,9 +131,16 @@ function TrendChart({ sessions }) {
     <svg className="trend-svg" viewBox={`0 0 ${W} ${H}`} role="img">
       {[0, 25, 50, 75, 100].map((tick) => {
         const y = H - pad - (tick / 100) * (H - pad * 2);
+
         return (
           <g key={tick}>
-            <line x1={pad} x2={W - pad} y1={y} y2={y} className="trend-grid" />
+            <line
+              x1={pad}
+              x2={W - pad}
+              y1={y}
+              y2={y}
+              className="trend-grid"
+            />
             <text x={0} y={y + 4} className="trend-tick">
               {tick}
             </text>
@@ -110,8 +192,13 @@ function QuestionFeedbackList({ items }) {
   const toggle = (i) =>
     setOpen((prev) => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
+
+      if (next.has(i)) {
+        next.delete(i);
+      } else {
+        next.add(i);
+      }
+
       return next;
     });
 
@@ -143,7 +230,9 @@ function QuestionFeedbackList({ items }) {
                 onClick={() => toggle(index)}
                 aria-expanded={isOpen}
               >
-                <span className="qf-num">Q{item.questionNumber ?? index + 1}</span>
+                <span className="qf-num">
+                  Q{item.questionNumber ?? index + 1}
+                </span>
 
                 <span className="qf-bar">
                   <span
@@ -206,7 +295,6 @@ function ReportView({ session, onBack }) {
           ← Back to sessions
         </button>
 
-        {/* Report Header */}
         <section className="dashboard-hero">
           <div>
             <p className="dashboard-eyebrow">AI INTERVIEW REPORT</p>
@@ -214,12 +302,16 @@ function ReportView({ session, onBack }) {
             <p className="dashboard-subtitle">
               {session.experience}
               {" · "}
-              {formatDate(session.completedAt || session.createdAt)}
+              {formatDate(
+                session.completedAt ||
+                  session.completed_at ||
+                  session.createdAt ||
+                  session.created_at
+              )}
             </p>
           </div>
         </section>
 
-        {/* Score */}
         <section className="stats-grid">
           <div className="stat-card">
             <span className="stat-label">Overall score</span>
@@ -233,20 +325,23 @@ function ReportView({ session, onBack }) {
           <div className="stat-card">
             <span className="stat-label">Questions answered</span>
             <div className="stat-number">
-              {session.answeredQuestions}
-              <small>/{session.totalQuestions}</small>
+              {session.answeredQuestions ?? session.answered_questions ?? 0}
+              <small>
+                /{session.totalQuestions ?? session.total_questions ?? 0}
+              </small>
             </div>
             <p className="stat-help">Interview completion</p>
           </div>
 
           <div className="stat-card">
             <span className="stat-label">Technical stack</span>
-            <div className="stat-number stat-number-text">{session.techStack}</div>
+            <div className="stat-number stat-number-text">
+              {session.techStack || session.tech_stack || "Technical"}
+            </div>
             <p className="stat-help">Interview focus</p>
           </div>
         </section>
 
-        {/* Strengths / Weaknesses / Improvements side by side */}
         {(hasStrengths || hasWeaknesses || hasImprovements) && (
           <div className="feedback-grid">
             {hasStrengths && (
@@ -275,7 +370,6 @@ function ReportView({ session, onBack }) {
           </div>
         )}
 
-        {/* Question Feedback */}
         {evaluation.questionFeedback?.length > 0 && (
           <QuestionFeedbackList items={evaluation.questionFeedback} />
         )}
@@ -288,9 +382,29 @@ function ReportView({ session, onBack }) {
 // Dashboard
 // --------------------------------------------------
 
-function Dashboard({ onStartInterview, sessions = [] }) {
+function Dashboard({
+  onStartInterview,
+  onResumeDraft,
+  sessions = [],
+}) {
   const { user } = useUser();
   const [selectedSession, setSelectedSession] = useState(null);
+  const [drafts, setDrafts] = useState(() => readInterviewDrafts());
+
+  const discardDraft = (storageKey) => {
+    const confirmed = window.confirm(
+      "Discard this saved interview draft? This cannot be undone."
+    );
+
+    if (!confirmed) return;
+
+    try {
+      localStorage.removeItem(storageKey);
+      setDrafts(readInterviewDrafts());
+    } catch (error) {
+      console.error("Unable to discard interview draft:", error);
+    }
+  };
 
   if (selectedSession) {
     return (
@@ -305,12 +419,16 @@ function Dashboard({ onStartInterview, sessions = [] }) {
   const completedSessions = sessions.length;
 
   const totalQuestions = sessions.reduce(
-    (total, s) => total + (s.totalQuestions || 0),
+    (total, session) =>
+      total +
+      (session.totalQuestions ?? session.total_questions ?? 0),
     0
   );
 
   const answeredQuestions = sessions.reduce(
-    (total, s) => total + (s.answeredQuestions || 0),
+    (total, session) =>
+      total +
+      (session.answeredQuestions ?? session.answered_questions ?? 0),
     0
   );
 
@@ -320,7 +438,7 @@ function Dashboard({ onStartInterview, sessions = [] }) {
 
   const avgScore = completedSessions
     ? (
-        sessions.reduce((total, s) => total + getScore(s), 0) /
+        sessions.reduce((total, session) => total + getScore(session), 0) /
         completedSessions
       ).toFixed(0)
     : "–";
@@ -360,7 +478,10 @@ function Dashboard({ onStartInterview, sessions = [] }) {
             </p>
           </div>
 
-          <button className="dashboard-primary-btn" onClick={onStartInterview}>
+          <button
+            className="dashboard-primary-btn"
+            onClick={onStartInterview}
+          >
             <span className="plus-icon">+</span>
             Start New Interview
           </button>
@@ -395,7 +516,76 @@ function Dashboard({ onStartInterview, sessions = [] }) {
           </div>
         </section>
 
-        {/* Trend */}
+        {/* Saved drafts / Resume Interview */}
+        {drafts.length > 0 && (
+          <section>
+            <div className="section-header">
+              <div>
+                <h2>Continue practicing</h2>
+                <p>Resume an interview you saved earlier.</p>
+              </div>
+            </div>
+
+            <ul className="sessions-list">
+              {drafts.map((draft) => {
+                const techStack = draft.setup?.techStack || "Technical";
+                const experience = draft.setup?.experience || "Fresher";
+                const currentQuestion = Math.min(
+                  Math.max(Number(draft.index) || 0, 0) + 1,
+                  draft.questions.length
+                );
+
+                return (
+                  <li className="session-row" key={draft.storageKey}>
+                    <div className="session-avatar">
+                      {techStack.charAt(0).toUpperCase()}
+                    </div>
+
+                    <div className="session-main">
+                      <strong>{techStack}</strong>
+                      <span>
+                        {experience} · Question {currentQuestion} of{" "}
+                        {draft.questions.length}
+                      </span>
+                      <span>
+                        {draft.answeredCount} answer
+                        {draft.answeredCount === 1 ? "" : "s"} saved
+                        {draft.savedAt
+                          ? ` · Saved ${formatDate(draft.savedAt) || "recently"}`
+                          : ""}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        flexWrap: "wrap",
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      <button
+                        className="session-report-btn"
+                        onClick={() => onResumeDraft?.(draft)}
+                      >
+                        Resume Interview
+                      </button>
+
+                      <button
+                        className="practice-link"
+                        onClick={() => discardDraft(draft.storageKey)}
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {/* Score Trend */}
         <section className="panel">
           <div className="panel-header">
             <div>
@@ -409,7 +599,10 @@ function Dashboard({ onStartInterview, sessions = [] }) {
               <div className="empty-state">
                 <h3>No interview data yet</h3>
                 <p>Complete your first interview to start tracking progress.</p>
-                <button className="chart-start-btn" onClick={onStartInterview}>
+                <button
+                  className="chart-start-btn"
+                  onClick={onStartInterview}
+                >
                   Start your first interview
                 </button>
               </div>
@@ -444,20 +637,36 @@ function Dashboard({ onStartInterview, sessions = [] }) {
             </div>
           ) : (
             <ul className="sessions-list">
-              {recentSessions.map((session) => {
-                const date = formatDate(session.completedAt || session.createdAt);
+              {recentSessions.map((session, index) => {
+                const date = formatDate(
+                  session.completedAt ||
+                    session.completed_at ||
+                    session.createdAt ||
+                    session.created_at
+                );
+
                 const score = getScore(session);
+                const techStack =
+                  session.techStack || session.tech_stack || "Technical";
+                const experience = session.experience || "Fresher";
+                const answered =
+                  session.answeredQuestions ?? session.answered_questions ?? 0;
+                const total =
+                  session.totalQuestions ?? session.total_questions ?? 0;
 
                 return (
-                  <li className="session-row" key={session.id}>
+                  <li
+                    className="session-row"
+                    key={session.id ?? `${techStack}-${date}-${index}`}
+                  >
                     <div className="session-avatar">
-                      {(session.techStack || "?").charAt(0).toUpperCase()}
+                      {techStack.charAt(0).toUpperCase()}
                     </div>
 
                     <div className="session-main">
-                      <strong>{session.techStack}</strong>
+                      <strong>{techStack}</strong>
                       <span>
-                        {session.experience}
+                        {experience}
                         {date ? ` · ${date}` : ""}
                       </span>
                     </div>
@@ -468,7 +677,7 @@ function Dashboard({ onStartInterview, sessions = [] }) {
                         <small>/100</small>
                       </span>
                       <span className="session-answered">
-                        {session.answeredQuestions}/{session.totalQuestions} answered
+                        {answered}/{total} answered
                       </span>
                     </div>
 

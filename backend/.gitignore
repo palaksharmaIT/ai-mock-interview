@@ -67,3 +67,22 @@ htmlcov/
 *.egg-info/
 build/
 dist/
+
+
+# Python virtual environments
+backend/venv/
+backend/venv_backup/
+venv/
+.venv/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Django generated files
+backend/staticfiles/

@@ -31,6 +31,26 @@ const mmss = (seconds) => {
 const levelLabel = (experience) =>
   experience === "Fresher" ? "Fresher" : `${experience} yrs`;
 
+const getDraftKey = (setup) =>
+  `rehearsal_draft_${encodeURIComponent(setup.techStack)}_${encodeURIComponent(setup.experience)}`;
+
+const readDraft = (key) => {
+  try {
+    const saved = localStorage.getItem(key);
+    if (!saved) return null;
+
+    const draft = JSON.parse(saved);
+
+    if (!Array.isArray(draft.questions) || draft.questions.length === 0) {
+      return null;
+    }
+
+    return draft;
+  } catch {
+    return null;
+  }
+};
+
 export default function InterviewRoom({
   setup,
   questions,
@@ -38,15 +58,37 @@ export default function InterviewRoom({
   onFinish,
   onCancel,
 }) {
-  const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState(() =>
-    questions.map(() => "")
+  const draftKey = getDraftKey(setup);
+
+  const [draft] = useState(() => readDraft(draftKey));
+
+  const [activeQuestions] = useState(() =>
+    draft?.questions?.length ? draft.questions : questions
   );
+
+  const [index, setIndex] = useState(() => {
+    if (!draft) return 0;
+
+    return Math.min(
+      Math.max(Number(draft.index) || 0, 0),
+      Math.max((draft.questions?.length || 1) - 1, 0)
+    );
+  });
+
+  const [answers, setAnswers] = useState(() => {
+    const savedAnswers = Array.isArray(draft?.answers)
+      ? draft.answers
+      : [];
+
+    return activeQuestions.map((_, i) => savedAnswers[i] || "");
+  });
+
   const [now, setNow] = useState(() => Date.now());
   const [listening, setListening] = useState(false);
   const [warningCount, setWarningCount] = useState(0);
   const [toast, setToast] = useState(null);
   const [terminationMessage, setTerminationMessage] = useState("");
+  const [draftSaved, setDraftSaved] = useState(false);
 
   const startedAt = useRef(Date.now());
   const questionStartedAt = useRef(Date.now());
@@ -56,8 +98,9 @@ export default function InterviewRoom({
   const eventsRef = useRef([]);
   const warningsRef = useRef(0);
   const toastTimerRef = useRef(null);
+  const terminationTimerRef = useRef(null);
   const statusRef = useRef("loading");
-  const indexRef = useRef(0);
+  const indexRef = useRef(index);
   const answersRef = useRef(answers);
   const stopStreamRef = useRef(false);
 
@@ -91,7 +134,6 @@ export default function InterviewRoom({
       window.speechSynthesis?.cancel();
     }
 
-    // Stop the camera and microphone immediately.
     stream?.getTracks().forEach((track) => track.stop());
   };
 
@@ -105,7 +147,18 @@ export default function InterviewRoom({
       clearTimeout(toastTimerRef.current);
     }
 
-    const finalAnswers = questions.map((question, i) => ({
+    if (terminationTimerRef.current) {
+      clearTimeout(terminationTimerRef.current);
+    }
+
+    // The interview is submitted, so its draft is no longer needed.
+    try {
+      localStorage.removeItem(draftKey);
+    } catch (error) {
+      console.warn("Could not remove interview draft:", error);
+    }
+
+    const finalAnswers = activeQuestions.map((question, i) => ({
       question,
       answer: (answersRef.current[i] || "").trim(),
     }));
@@ -120,24 +173,66 @@ export default function InterviewRoom({
   };
 
   // -----------------------------------------------
+  // Save draft and resume later
+  // -----------------------------------------------
+
+  const saveAndExit = () => {
+    if (finishedRef.current || shouldTerminate) return;
+
+    stopListening();
+
+    if (typeof window !== "undefined") {
+      window.speechSynthesis?.cancel();
+    }
+
+    const draftData = {
+      setup,
+      questions: activeQuestions,
+      answers: answersRef.current,
+      index: indexRef.current,
+      savedAt: new Date().toISOString(),
+    };
+
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(draftData));
+      setDraftSaved(true);
+    } catch (error) {
+      console.error("Could not save interview draft:", error);
+      setToast({
+        number: null,
+        text: "Unable to save your draft. Check your browser storage.",
+      });
+      return;
+    }
+
+    stopMedia();
+
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+
+    // Return to the previous screen without submitting the interview.
+    onCancel();
+  };
+
+  // -----------------------------------------------
   // Proctoring events
   // -----------------------------------------------
 
   const handleFlag = (flag) => {
     if (finishedRef.current) return;
 
-    const warningNumber = flag.violationNumber || warningsRef.current + 1;
+    const warningNumber =
+      flag.violationNumber || warningsRef.current + 1;
 
     warningsRef.current = warningNumber;
     setWarningCount(warningNumber);
 
-    const event = {
+    eventsRef.current.push({
       ...flag,
       question: indexRef.current + 1,
       warningNumber,
-    };
-
-    eventsRef.current.push(event);
+    });
 
     setToast({
       number: warningNumber,
@@ -170,8 +265,11 @@ export default function InterviewRoom({
       text: reason,
     });
 
-    // Show the termination message briefly, then submit and save.
-    setTimeout(() => {
+    if (terminationTimerRef.current) {
+      clearTimeout(terminationTimerRef.current);
+    }
+
+    terminationTimerRef.current = setTimeout(() => {
       submitInterview("violation_limit_reached");
     }, 1800);
   };
@@ -197,6 +295,10 @@ export default function InterviewRoom({
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current);
       }
+
+      if (terminationTimerRef.current) {
+        clearTimeout(terminationTimerRef.current);
+      }
     };
   }, []);
 
@@ -214,9 +316,11 @@ export default function InterviewRoom({
 
   const elapsed = Math.floor((now - startedAt.current) / 1000);
   const left = TOTAL_SECONDS - elapsed;
+
   const qElapsed = Math.floor(
     (now - questionStartedAt.current) / 1000
   );
+
   const low = left <= LOW_TIME_SECONDS;
 
   // -----------------------------------------------
@@ -293,7 +397,7 @@ export default function InterviewRoom({
       try {
         recognition.stop();
       } catch {
-        // Recognition may already be stopped.
+        // Recognition may already have stopped.
       }
 
       window.speechSynthesis?.cancel();
@@ -304,14 +408,14 @@ export default function InterviewRoom({
     try {
       recogRef.current?.stop();
     } catch {
-      // Recognition may already be stopped.
+      // Recognition may already have stopped.
     }
 
     setListening(false);
   };
 
   const toggleMic = () => {
-    if (finishedRef.current) return;
+    if (finishedRef.current || controlsDisabled) return;
 
     if (listening) {
       stopListening();
@@ -327,12 +431,12 @@ export default function InterviewRoom({
   };
 
   const readAloud = () => {
-    if (!canSpeak || finishedRef.current) return;
+    if (!canSpeak || finishedRef.current || controlsDisabled) return;
 
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(
-      questions[index]
+      activeQuestions[index]
     );
 
     window.speechSynthesis.speak(utterance);
@@ -348,8 +452,6 @@ export default function InterviewRoom({
     }
   }, [left]);
 
-  // The hook calls onTerminate when the violation limit is reached.
-  // This state is also useful for guarding further user actions.
   useEffect(() => {
     if (shouldTerminate && !terminationMessage) {
       setTerminationMessage(
@@ -362,24 +464,36 @@ export default function InterviewRoom({
   // Navigation
   // -----------------------------------------------
 
+  const previous = () => {
+    if (finishedRef.current || shouldTerminate || index <= 0) return;
+
+    stopListening();
+    window.speechSynthesis?.cancel();
+
+    setIndex((current) => current - 1);
+    questionStartedAt.current = Date.now();
+    setNow(Date.now());
+    setDraftSaved(false);
+  };
+
   const next = () => {
     if (finishedRef.current || shouldTerminate) return;
 
     stopListening();
-
     window.speechSynthesis?.cancel();
 
-    if (index < questions.length - 1) {
-      setIndex((previous) => previous + 1);
+    if (index < activeQuestions.length - 1) {
+      setIndex((current) => current + 1);
       questionStartedAt.current = Date.now();
       setNow(Date.now());
+      setDraftSaved(false);
     } else {
       submitInterview("completed");
     }
   };
 
   const cancel = () => {
-    if (finishedRef.current) return;
+    if (finishedRef.current || shouldTerminate) return;
 
     if (
       window.confirm(
@@ -397,7 +511,8 @@ export default function InterviewRoom({
     }
   };
 
-  const isLast = index === questions.length - 1;
+  const isLast = index === activeQuestions.length - 1;
+
   const controlsDisabled =
     Boolean(terminationMessage) ||
     shouldTerminate ||
@@ -439,11 +554,11 @@ export default function InterviewRoom({
             className="q-progress"
             role="progressbar"
             aria-valuemin={1}
-            aria-valuemax={questions.length}
+            aria-valuemax={activeQuestions.length}
             aria-valuenow={index + 1}
-            aria-label={`Question ${index + 1} of ${questions.length}`}
+            aria-label={`Question ${index + 1} of ${activeQuestions.length}`}
           >
-            {questions.map((_, i) => (
+            {activeQuestions.map((_, i) => (
               <span
                 key={i}
                 className={
@@ -456,7 +571,7 @@ export default function InterviewRoom({
           <article className="q-card">
             <div className="q-head">
               <span>
-                Question {index + 1} of {questions.length}
+                Question {index + 1} of {activeQuestions.length}
               </span>
 
               <span>
@@ -465,7 +580,7 @@ export default function InterviewRoom({
               </span>
             </div>
 
-            <h1 className="q-text">{questions[index]}</h1>
+            <h1 className="q-text">{activeQuestions[index]}</h1>
 
             <label htmlFor="answer" className="sr-only">
               Your answer
@@ -475,13 +590,14 @@ export default function InterviewRoom({
               id="answer"
               value={answers[index] || ""}
               disabled={controlsDisabled}
-              onChange={(event) =>
-                setAnswers((previous) =>
-                  previous.map((answer, i) =>
+              onChange={(event) => {
+                setAnswers((previousAnswers) =>
+                  previousAnswers.map((answer, i) =>
                     i === index ? event.target.value : answer
                   )
-                )
-              }
+                );
+                setDraftSaved(false);
+              }}
               placeholder={
                 speechSupported
                   ? "Answer aloud or type here. You can edit the transcript."
@@ -521,27 +637,76 @@ export default function InterviewRoom({
                 )}
               </div>
 
-              <button
-                type="button"
-                className="cta"
-                onClick={next}
-                disabled={controlsDisabled}
+              <div
+                className="navigation-buttons"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                }}
               >
-                {isLast ? "Finish interview" : "Next question"}
-              </button>
+                <button
+                  type="button"
+                  className="btn-ghost sm"
+                  onClick={previous}
+                  disabled={index === 0 || controlsDisabled}
+                >
+                  ← Previous Question
+                </button>
+
+                <button
+                  type="button"
+                  className="cta"
+                  onClick={next}
+                  disabled={controlsDisabled}
+                >
+                  {isLast ? "Finish Interview" : "Next Question →"}
+                </button>
+              </div>
             </div>
           </article>
 
-          {!terminationMessage && (
+          <div
+            className="interview-footer"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginTop: "16px",
+            }}
+          >
             <button
               type="button"
-              className="end-link"
-              onClick={cancel}
+              className="btn-ghost sm"
+              onClick={saveAndExit}
               disabled={controlsDisabled}
             >
-              End interview
+              Save & Exit
             </button>
-          )}
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              {draftSaved && (
+                <span role="status" style={{ fontSize: "13px" }}>
+                  Draft saved
+                </span>
+              )}
+
+              {!terminationMessage && (
+                <button
+                  type="button"
+                  className="end-link"
+                  onClick={cancel}
+                  disabled={controlsDisabled}
+                >
+                  Discard interview
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </main>
 
@@ -550,7 +715,9 @@ export default function InterviewRoom({
           <strong>
             {terminationMessage
               ? "Interview ending"
-              : `Warning ${toast.number} of ${MAX_WARNINGS}`}
+              : toast.number
+                ? `Warning ${toast.number} of ${MAX_WARNINGS}`
+                : "Notice"}
           </strong>
 
           <span>{toast.text}</span>
@@ -567,9 +734,7 @@ export default function InterviewRoom({
         <video ref={videoRef} autoPlay muted playsInline />
 
         <span>
-          {proctorCurrent
-            ? "Check your position"
-            : "You"}
+          {proctorCurrent ? "Check your position" : "You"}
         </span>
       </div>
     </div>
