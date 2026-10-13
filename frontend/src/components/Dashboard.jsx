@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useUser, UserButton } from "@clerk/clerk-react";
 import "./Dashboard.css";
@@ -113,48 +112,66 @@ function formatDate(value) {
 // --------------------------------------------------
 
 function TrendChart({ sessions }) {
-  const scores = [...sessions].reverse().map(getScore);
+  const ordered = [...sessions].reverse();
+  const scores = ordered.map(getScore);
 
-  const W = 600;
-  const H = 160;
-  const pad = 20;
+  const W = 800;
+  const H = 280;
+  const padLeft = 44;
+  const padRight = 28;
+  const padTop = 28;
+  const padBottom = 44;
 
-  const step =
-    scores.length > 1 ? (W - pad * 2) / (scores.length - 1) : 0;
+  const plotW = W - padLeft - padRight;
+  const plotH = H - padTop - padBottom;
+  const step = scores.length > 1 ? plotW / (scores.length - 1) : 0;
 
-  const points = scores.map((score, i) => [
-    pad + i * step,
-    H - pad - (score / 100) * (H - pad * 2),
-  ]);
+  const yFor = (value) => padTop + plotH - (value / 100) * plotH;
+
+  const points = scores.map((score, i) => [padLeft + i * step, yFor(score)]);
+  const linePoints = points.map((p) => p.join(",")).join(" ");
+  const areaPoints = `${padLeft},${yFor(0)} ${linePoints} ${
+    padLeft + (scores.length - 1) * step
+  },${yFor(0)}`;
 
   return (
     <svg className="trend-svg" viewBox={`0 0 ${W} ${H}`} role="img">
-      {[0, 25, 50, 75, 100].map((tick) => {
-        const y = H - pad - (tick / 100) * (H - pad * 2);
+      {[0, 25, 50, 75, 100].map((tick) => (
+        <g key={tick}>
+          <line
+            x1={padLeft}
+            x2={W - padRight}
+            y1={yFor(tick)}
+            y2={yFor(tick)}
+            className="trend-grid"
+          />
+          <text x={padLeft - 10} y={yFor(tick) + 4} className="trend-tick">
+            {tick}
+          </text>
+        </g>
+      ))}
 
-        return (
-          <g key={tick}>
-            <line
-              x1={pad}
-              x2={W - pad}
-              y1={y}
-              y2={y}
-              className="trend-grid"
-            />
-            <text x={0} y={y + 4} className="trend-tick">
-              {tick}
-            </text>
-          </g>
-        );
-      })}
-
-      <polyline
-        className="trend-line"
-        points={points.map((p) => p.join(",")).join(" ")}
-      />
+      <polygon className="trend-area" points={areaPoints} />
+      <polyline className="trend-line" points={linePoints} />
 
       {points.map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="4" className="trend-dot" />
+        <g key={i}>
+          <circle cx={x} cy={y} r="5" className="trend-dot" />
+          <text x={x} y={y - 12} className="trend-value">
+            {Math.round(scores[i])}
+          </text>
+          <text x={x} y={H - 14} className="trend-date">
+            {new Date(
+              ordered[i].completedAt ||
+                ordered[i].completed_at ||
+                ordered[i].createdAt ||
+                ordered[i].created_at
+            ).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            })}
+          </text>
+        </g>
       ))}
     </svg>
   );

@@ -699,3 +699,159 @@
   .qf-row { gap: 10px; padding: 14px 16px; }
   .qf-feedback { padding-left: 16px; padding-right: 16px; }
 }
+
+/* ==================================================
+   DASHBOARD LAYOUT FIX
+   Paste at the very END of Dashboard.css.
+   If you pasted the earlier "LAYOUT + TREND CHART FIX"
+   block, delete it first and use this one instead.
+
+   Why: App.css has generic rules (.home main, .home header,
+   .home h1, .panel, .panel > *) written for the landing page.
+   The dashboard sits inside .home and uses the class .panel,
+   so those rules were centering the text, shrinking cards to
+   different widths, and capping the chart card at 24rem.
+   These overrides are more specific, so they win.
+   ================================================== */
+
+.dashboard {
+  width: 100%;
+}
+
+/* ---- Header: undo .home header ---- */
+
+.dashboard .dashboard-header {
+  display: block;
+  padding: 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard .dashboard-inner {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-left: 32px;
+  padding-right: 32px;
+  box-sizing: border-box;
+}
+
+/* ---- Main column: undo .home main (centered, shrink-wrapped) ---- */
+
+.dashboard main.dashboard-content {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 40px;
+  text-align: left;
+  padding-top: 48px;
+  padding-bottom: 64px;
+}
+
+/* ---- Hero: undo .home h1 (max-width 20ch, auto margins) ---- */
+
+.dashboard .dashboard-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.dashboard .dashboard-hero > div {
+  text-align: left;
+}
+
+.dashboard .dashboard-hero h1 {
+  max-width: none;
+  margin: 0;
+  text-align: left;
+}
+
+.dashboard .dashboard-subtitle {
+  max-width: 520px;
+  margin: 12px 0 0;
+}
+
+/* ---- Panels: undo .panel and .panel > * from App.css ---- */
+
+.dashboard .panel {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+.dashboard .panel > * {
+  width: auto;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.dashboard .panel.empty-state {
+  padding: 36px 24px;
+}
+
+.dashboard .panel h2 {
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.dashboard .section-header,
+.dashboard .panel-header {
+  text-align: left;
+}
+
+/* ---- Lists fill the column ---- */
+
+.dashboard .sessions-list,
+.dashboard .qf-list {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* ---- Trend chart ---- */
+
+.dashboard .trend-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.dashboard .trend-tick {
+  fill: var(--muted);
+  font-size: 13px;
+  text-anchor: end;
+}
+
+.dashboard .trend-area {
+  fill: var(--accent);
+  opacity: 0.08;
+}
+
+.dashboard .trend-value {
+  fill: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+
+.dashboard .trend-date {
+  fill: var(--muted);
+  font-size: 12px;
+  text-anchor: middle;
+}
+
+@media (max-width: 720px) {
+  .dashboard .dashboard-inner {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
