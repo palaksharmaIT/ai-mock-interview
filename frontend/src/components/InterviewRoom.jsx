@@ -430,17 +430,47 @@ export default function InterviewRoom({
     }
   };
 
-  const readAloud = () => {
-    if (!canSpeak || finishedRef.current || controlsDisabled) return;
+const readAloud = () => {
+  if (finishedRef.current || controlsDisabled) {
+    console.log("Read aloud disabled");
+    return;
+  }
 
-    window.speechSynthesis.cancel();
+  const question = activeQuestions[index];
 
-    const utterance = new SpeechSynthesisUtterance(
-      activeQuestions[index]
-    );
+  if (!question) {
+    console.error("No question found at index:", index);
+    return;
+  }
 
-    window.speechSynthesis.speak(utterance);
+  const questionText =
+    typeof question === "string"
+      ? question
+      : question.question || question.text || "";
+
+  if (!questionText.trim()) {
+    console.error("Question text is empty:", question);
+    return;
+  }
+
+  if (!("speechSynthesis" in window)) {
+    alert("Your browser does not support text-to-speech.");
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(questionText);
+  utterance.lang = "en-US";
+  utterance.rate = 0.9;
+
+  utterance.onstart = () => console.log("Reading question aloud");
+  utterance.onerror = (event) => {
+    console.error("Speech error:", event.error);
   };
+
+  window.speechSynthesis.speak(utterance);
+};
 
   // -----------------------------------------------
   // Automatic termination
